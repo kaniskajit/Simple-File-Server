@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Server</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: auto;
+        }
+
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        li {
+            margin: 5px 0;
+            padding: 10px;
+            background-color: #f4f4f4;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        a {
+            text-decoration: none;
+            color: #007bff;
+            font-weight: bold;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        form {
+            margin-top: 30px;
+            border-top: 2px solid #eee;
+            padding-top: 20px;
+        }
+
+        progress {
+            width: 100%;
+            max-width: 400px;
+            height: 20px;
+            margin-top: 10px;
+        }
+
+        #uploadStatus {
+            margin-top: 10px;
+            font-weight: bold;
+        }
+
+        #fileListContainer p {
+            color: #666;
+        }
+
+        #cancelButton {
+            background-color: #dc3545;
+            color: white;
+            border-color: #dc3545;
+            margin-left: 10px;
+        }
+
+        input[type="file"]::file-selector-button {
+            border-radius: 4px;
+            padding: 0 16px;
+            height: 40px;
+            cursor: pointer;
+            background-color: white;
+            border: 1px solid rgba(0, 0, 0, 0.16);
+            box-shadow: 0px 1px 0px rgba(0, 0, 0, 0.05);
+            margin-right: 16px;
+            transition: background-color 200ms;
+        }
+
+        input[type="file"]::file-selector-button:hover {
+            background-color: #f3f4f6;
+        }
+
+        input[type="file"]::file-selector-button:active {
+            background-color: #e5e7eb;
+        }
+
+        button {
+            display: inline-block;
+            outline: 0;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            border-radius: 4px;
+            font-size: 13px;
+            height: 40px;
+            background-color: #9147ff;
+            color: white;
+            padding: 0 20px;                      
+        }
+        button:hover {
+            background-color: #772ce8;
+        }
+        
+    </style>
+</head>
+
+<body>
+    <h1>File Server 📂</h1>
+
+    <h2>Available Files</h2>
+    <div id="fileListContainer">
+    </div>
+
+    <form id="uploadForm">
+        <h2>Upload a File</h2>
+        <input type="file" name="fileToUpload" id="fileInput" required>
+       
+            <button type="submit">Upload</button>
+            <button type="button" id="cancelButton" style="display: none;">Cancel</button>
+        
+        <progress id="progressBar" value="0" max="100" style="display: none;"></progress>
+        <div id="uploadStatus"></div>
+    </form>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const fileListContainer = document.getElementById('fileListContainer');
+            const form = document.getElementById('uploadForm');
+            const fileInput = document.getElementById('fileInput');
+            const progressBar = document.getElementById('progressBar');
+            const uploadStatus = document.getElementById('uploadStatus');
+            const cancelButton = document.getElementById('cancelButton');
+            const uploadButton = form.querySelector('button[type="submit"]');
+
+            let xhr;
+
+            // Fetch and display the list of files
+            function loadFiles() {
+                fetch('/api/files')
+                    .then(response => response.json())
+                    .then(files => {
+                        fileListContainer.innerHTML = ''; // Clear previous list
+                        if (files.length === 0) {
+                            fileListContainer.innerHTML = '<p>No files found.</p>';
+                        } else {
+                            const ul = document.createElement('ul');
+                            files.forEach(file => {
+                                const li = document.createElement('li');
+                                const a = document.createElement('a');
+                                a.href = `/download/${encodeURIComponent(file)}`;
+                                a.textContent = file;
+                                li.appendChild(a);
+                                ul.appendChild(li);
+                            });
+                            fileListContainer.appendChild(ul);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching file list:', error);
+                        fileListContainer.innerHTML = '<p>Could not load file list.</p>';
+                    });
+            }
+
+            loadFiles(); // Initial load
+
+            // Handle the file upload form 
+            form.addEventListener('submit', function (event) {
+                event.preventDefault();
+
+                if (fileInput.files.length === 0) {
+                    uploadStatus.textContent = 'Please select a file to upload.';
+                    uploadStatus.style.color = 'red';
+                    return;
+                }
+
+                uploadButton.disabled = true;
+                cancelButton.style.display = 'inline-block';
+                progressBar.style.display = 'block';
+                progressBar.value = 0;
+                uploadStatus.textContent = '';
+
+
+                const file = fileInput.files[0];
+                const formData = new FormData();
+                formData.append('fileToUpload', file);
+
+                xhr = new XMLHttpRequest();
+                xhr.open('POST', '/upload', true);
+
+                xhr.upload.onprogress = function (e) {
+                    if (e.lengthComputable) {
+                        const percentComplete = (e.loaded / e.total) * 100;
+                        progressBar.value = percentComplete;
+                        uploadStatus.textContent = Math.round(percentComplete) + '% uploaded...';
+                    }
+                };
+
+                xhr.onload = function () {
+                    uploadButton.disabled = false;
+                    cancelButton.style.display = 'none';
+                    if (xhr.status === 200) {
+                        uploadStatus.textContent = '✅ Upload complete!';
+                        uploadStatus.style.color = 'green';
+                        setTimeout(() => {
+                            loadFiles(); // Reload file list
+                            uploadStatus.textContent = '';
+                            progressBar.style.display = 'none';
+                            form.reset();
+                        }, 1500);
+                    } else {
+                        uploadStatus.textContent = 'Upload failed. Please try again.';
+                        uploadStatus.style.color = 'red';
+                    }
+                };
+
+                xhr.onerror = function () {
+                    uploadButton.disabled = false;
+                    cancelButton.style.display = 'none';
+                    uploadStatus.textContent = 'An error occurred during the upload.';
+                    uploadStatus.style.color = 'red';
+                };
+
+                // Handle cancellation
+                xhr.onabort = function () {
+                    uploadButton.disabled = false;
+                    cancelButton.style.display = 'none';
+                    progressBar.style.display = 'none';
+                    uploadStatus.textContent = 'Upload cancelled.';
+                    uploadStatus.style.color = 'orange';
+                    form.reset();
+                };
+
+                xhr.send(formData);
+            });
+
+            // Cancel button event listener
+            cancelButton.addEventListener('click', function () {
+                if (xhr) {
+                    xhr.abort(); // triggers the xhr.onabort event
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>
